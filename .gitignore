@@ -1,0 +1,31 @@
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ── Virtual environments (machine-specific; Colab builds its own) ─────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Local tooling / editor ───────────────────────────────────────────────────
+.claude/
+.vscode/
+.idea/
+
+# ── Dataset (huge — not stored in git; supply on Colab / mount from Drive) ────
+data/
+
+# ── Outputs: keep splits/logs/previews; drop heavy & redundant artifacts ──────
+# model_best.pth and last.pth are kept via Git LFS (see .gitattributes).
+outputs/checkpoints/model_epoch_*.pth
+outputs/results/
+outputs/training_plot.png
+
+# ── OS cruft ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

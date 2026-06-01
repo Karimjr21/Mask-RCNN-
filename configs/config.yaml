@@ -1,0 +1,95 @@
+dataset:
+  # ── Raw iSAID data (huge images + original COCO annotations) ──────────────
+  # Put the REAL RGB satellite images (P0000.png, P0001.png, ...) in raw_images_dir.
+  # The *_instance_id_RGB.png / *_instance_color_RGB.png files are NOT the images.
+  raw_images_dir: "data/images"
+  raw_ann_file:   "data/annotations/iSAID_train.json"
+
+  # ── Patched (tiled) data produced by src/prepare_isaid.py ────────────────
+  images_dir: "data/patches/images"
+  ann_file:   "data/patches/annotations.json"
+
+  # ── Tiling ───────────────────────────────────────────────────────────────
+  tile_size:    800
+  tile_overlap: 200
+  keep_empty_tiles: false      # write tiles with no instances too?
+
+  # ── Instances / split ─────────────────────────────────────────────────────
+  min_instance_area: 100       # drop instance fragments smaller than this (px)
+  max_instances: 256           # cap instances per training tile (memory guard for dense tiles); val keeps all
+  image_size: null             # tiles are already 800px; set an int to resize
+  train_split: 0.8
+  seed: 42
+  split_indices_path: "outputs/splits/train_val_split.json"
+
+# ── iSAID instance categories (15 foreground classes) ────────────────────────
+# Model labels: 0 = background, 1..15 = iSAID category ids (used as-is).
+classes:
+  num_foreground: 15
+  names:
+    1:  storage_tank
+    2:  large_vehicle
+    3:  small_vehicle
+    4:  plane
+    5:  ship
+    6:  swimming_pool
+    7:  harbor
+    8:  tennis_court
+    9:  ground_track_field
+    10: soccer_ball_field
+    11: baseball_diamond
+    12: bridge
+    13: basketball_court
+    14: roundabout
+    15: helicopter
+
+model:
+  backbone:    "resnet50"
+  pretrained:  true
+  num_classes: 16            # 15 foreground + 1 background
+  trainable_backbone_layers: 3        # ResNet stages to fine-tune (0-5); 3 fits 4 GB
+  detections_per_img: 300             # iSAID tiles are dense; default 100 caps recall
+  anchor_sizes: [16, 32, 64, 128, 256]  # smaller than COCO default for small aerial objects (one per FPN level)
+
+training:
+  epochs:          50
+  batch_size:        2        # ~1.5 GB/img of 4 GB VRAM; batch 2 (~3 GB) uses the headroom & halves GPU-call overhead
+  accumulation_steps: 4       # batch 2 x 4 = effective batch 8 (same as before) -> identical LR schedule & quality
+  learning_rate:     0.01     # scaled for effective batch 8; warmup+cosine schedule
+  warmup_iters:      1000     # linear LR warmup (in optimizer steps) before cosine decay
+  momentum:          0.9
+  weight_decay:      0.0005
+  gradient_clip_norm: 1.0     # clip grads; guards the larger LR early on
+  checkpoint_dir:    "outputs/checkpoints"
+  save_every:        2
+  validation_interval:      2  # full detection validation every N epochs (epoch 1 & last always run); 1 = every epoch
+  val_fraction:           0.25 # validate on this fraction of the val set (evenly-spaced, deterministic); 1.0 = full set
+  validation_loss_interval: 5  # loss needs an extra validation forward; only on validation epochs
+  keep_last_checkpoints: 3    # keep only the N newest model_epoch_*.pth (best/last always kept; 0 = keep all)
+  amp:               false    # torchvision Mask R-CNN NaNs under fp16 autocast on this GPU; keep fp32
+  early_stopping_patience:   12  # counts *validation events* without improvement (12 events = 24 epochs at interval 2)
+  early_stopping_min_epochs: 15
+  early_stopping_min_delta:  0.001
+  num_workers:     2          # overlaps the ~0.12s/tile decode+augment behind the ~0.42s GPU step; COCO loads lazily per worker (~0.5 GB each). Training is GPU-bound, so 2 is enough; the train + val loaders each hold this many workers, so raising it costs ~0.5 GB RAM per extra worker x2.
+  pin_memory:      true
+  persistent_workers: true    # keep workers (and their COCO index) alive across epochs
+  prefetch_factor: 4          # tiles each worker buffers ahead of the GPU
+
+  # ── Fit-diagnosis thresholds (mAP@50 based) ───────────────────────────────
+  overfit_gap_threshold:   0.15
+  underfit_iou_threshold:  0.20
+  good_iou_threshold:      0.40
+
+inference:
+  score_threshold:     0.3
+  nms_threshold:       0.3
+  metric_iou_threshold: 0.5
+  mask_threshold:      0.5
+  results_dir:         "outputs/results"
+  val_eval_fp16:       false  # DO NOT enable on this model: measured fast (~9x, 1.4 GB) but torchvision Mask R-CNN post-processing is not fp16-safe in eval -> masks go degenerate and mAP collapses to 0.0. Kept as an off-by-default lever only.
+
+logging:
+  log_file:          "outputs/training_log.csv"
+  plot_file:         "outputs/training_plot.png"
+  val_preview_dir:   "outputs/validation_previews"
+  val_preview_count: 5
