@@ -114,8 +114,13 @@ if __name__ == "__main__":
     mc = cfg["model"]
     model = get_model(
         mc["num_classes"], pretrained=False,
+        trainable_backbone_layers=int(mc.get("trainable_backbone_layers", 3)),
         anchor_sizes=mc.get("anchor_sizes"),
+        anchor_aspect_ratios=mc.get("anchor_aspect_ratios"),
         detections_per_img=int(mc.get("detections_per_img", 100)),
+        arch=mc.get("arch", "v1"),
+        min_size=int(mc.get("min_size", 800)),
+        max_size=int(mc.get("max_size", 1333)),
     )
     model.load_state_dict(load_state_dict(checkpoint, device))
     model.to(device)

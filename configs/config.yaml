@@ -16,7 +16,7 @@ dataset:
 
   # ── Instances / split ─────────────────────────────────────────────────────
   min_instance_area: 100       # drop instance fragments smaller than this (px)
-  max_instances: 256           # cap instances per training tile (memory guard for dense tiles); val keeps all
+  max_instances: 384           # cap instances per training tile (memory guard for dense tiles); val keeps all. Raised 256->384: dense small_vehicle tiles exceed 256 and randomly dropping GT teaches the model those objects are background (hurts recall). 16 GB T4 has the headroom.
   image_size: null             # tiles are already 800px; set an int to resize
   train_split: 0.8
   seed: 42
@@ -44,19 +44,23 @@ classes:
     15: helicopter
 
 model:
+  arch:        "v2"          # v1 = maskrcnn_resnet50_fpn; v2 = maskrcnn_resnet50_fpn_v2 (improved heads + recipe, several AP pts higher on COCO). NOTE: a v2 checkpoint is NOT loadable by a v1 model and vice versa — switching arch means a fresh run.
   backbone:    "resnet50"
   pretrained:  true
   num_classes: 16            # 15 foreground + 1 background
-  trainable_backbone_layers: 3        # ResNet stages to fine-tune (0-5); 3 fits 4 GB
+  trainable_backbone_layers: 4        # ResNet stages to fine-tune (0-5). 4 unfreezes everything except the generic conv1/bn1 stem; captures the COCO->aerial domain shift at far less memory than 5 (the stem's high-res activations are costly and its frozen BN stats help). 3 fits a 4 GB GPU.
   detections_per_img: 300             # iSAID tiles are dense; default 100 caps recall
   anchor_sizes: [16, 32, 64, 128, 256]  # smaller than COCO default for small aerial objects (one per FPN level)
+  anchor_aspect_ratios: [0.33, 0.5, 1.0, 2.0, 3.0]  # add elongated ratios (0.33, 3.0) for ships/harbors/bridges/large_vehicles; >3 ratios rebuilds the RPN head to match (re-learned, converges fast)
+  min_size: 800              # network input short side (tiles are 800px -> 1:1). Raise to 1000-1100 for better tiny-object recall, but cost scales ~(min_size/800)^2 in time+memory (1100 ~ 1.9x, likely needs batch_size 2). 800 keeps the run tractable on Kaggle.
+  max_size: 1333             # network input long side cap
 
 training:
-  epochs:          30
-  batch_size:        4        # batch 4 fits a 16 GB cloud GPU (Kaggle T4, ~14.5 GB usable) even on dense iSAID tiles; batch 8 OOMs in RPN box_iou. On a 4 GB local GPU use 2.
+  epochs:          35         # v2 + deeper fine-tune + new RPN head need a bit longer to converge than the v1 run (which plateaued ~epoch 12); early stopping trims it if it plateaus sooner.
+  batch_size:        4        # batch 4 fit the 16 GB T4 with v1 + 3 trainable layers. v2 + 4 trainable layers uses more memory: if epoch 1 OOMs, set batch_size 2 + accumulation_steps 4 (same effective batch 8). On a 4 GB local GPU use 2.
   accumulation_steps: 2       # batch 4 x 2 = effective batch 8 (unchanged) -> same LR schedule & quality
   learning_rate:     0.01     # scaled for effective batch 8; warmup+cosine schedule
-  warmup_iters:      1000     # linear LR warmup (in optimizer steps) before cosine decay
+  warmup_iters:      1500     # linear LR warmup (in optimizer steps) before cosine decay; longer warmup steadies the freshly-initialised heads (box, mask, and the rebuilt RPN head) + the newly-unfrozen backbone layer
   momentum:          0.9
   weight_decay:      0.0005
   gradient_clip_norm: 1.0     # clip grads; guards the larger LR early on
@@ -68,7 +72,7 @@ training:
   keep_last_checkpoints: 3    # keep only the N newest model_epoch_*.pth (best/last always kept; 0 = keep all)
   amp:               false    # torchvision Mask R-CNN NaNs under fp16 autocast on this GPU; keep fp32
   early_stopping_patience:   12  # counts *validation events* without improvement (12 events = 24 epochs at interval 2)
-  early_stopping_min_epochs: 15
+  early_stopping_min_epochs: 20  # don't stop before epoch 20 — the deeper fine-tune + rebuilt RPN head improve later than the v1 run did
   early_stopping_min_delta:  0.001
   num_workers:     2          # overlaps the ~0.12s/tile decode+augment behind the ~0.42s GPU step; COCO loads lazily per worker (~0.5 GB each). Training is GPU-bound, so 2 is enough; the train + val loaders each hold this many workers, so raising it costs ~0.5 GB RAM per extra worker x2.
   pin_memory:      true

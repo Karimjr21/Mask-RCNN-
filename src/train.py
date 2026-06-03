@@ -752,8 +752,12 @@ def main():
         pretrained=mc.get("pretrained", True),
         trainable_backbone_layers=int(mc.get("trainable_backbone_layers", 3)),
         anchor_sizes=mc.get("anchor_sizes"),
+        anchor_aspect_ratios=mc.get("anchor_aspect_ratios"),
         detections_per_img=int(mc.get("detections_per_img", 100)),
         box_score_thresh=box_score_thresh,
+        arch=mc.get("arch", "v1"),
+        min_size=int(mc.get("min_size", 800)),
+        max_size=int(mc.get("max_size", 1333)),
     )
     model.to(device)
 
