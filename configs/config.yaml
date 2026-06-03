@@ -53,8 +53,8 @@ model:
 
 training:
   epochs:          50
-  batch_size:        2        # ~1.5 GB/img of 4 GB VRAM; batch 2 (~3 GB) uses the headroom & halves GPU-call overhead
-  accumulation_steps: 4       # batch 2 x 4 = effective batch 8 (same as before) -> identical LR schedule & quality
+  batch_size:        8        # tuned for a cloud 16 GB GPU (Kaggle T4/P100). On a 4 GB local GPU use 2. If CUDA OOM, drop to 4 + accumulation_steps 2.
+  accumulation_steps: 1       # batch 8 x 1 = effective batch 8 (unchanged) -> same LR schedule & quality, but ~4x fewer iterations/epoch than batch 2 + accum 4
   learning_rate:     0.01     # scaled for effective batch 8; warmup+cosine schedule
   warmup_iters:      1000     # linear LR warmup (in optimizer steps) before cosine decay
   momentum:          0.9
