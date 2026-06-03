@@ -16,6 +16,7 @@ from model import get_model
 from dataset import get_dataloaders
 from metrics import DetectionMetric
 from utils import CLASS_NAMES, overlay_masks, select_device
+from kaggle_sync import maybe_sync_checkpoints
 
 
 # CUDA reports an out-of-memory either as a clean OutOfMemoryError (caught at the
@@ -946,6 +947,16 @@ def main():
             "epochs_without_improvement": epochs_without_improvement,
         }, last_ckpt)
 
+        # ── Mirror checkpoints to a Kaggle Dataset (no-op unless on Kaggle) ──
+        # Gated by KAGGLE_CKPT_DATASET; pushes last.pth + model_best.pth every
+        # KAGGLE_CKPT_INTERVAL epochs so a Kaggle session disconnect costs at
+        # most a few epochs and the run resumes by re-attaching the dataset.
+        maybe_sync_checkpoints(
+            epoch,
+            cfg["training"]["checkpoint_dir"],
+            log_file=cfg["logging"].get("log_file"),
+        )
+
         # ── Checkpoint ────────────────────────────────────────────────
         if epoch % cfg["training"]["save_every"] == 0:
             ckpt = os.path.join(
@@ -982,6 +993,15 @@ def main():
     print(f"  Final model saved to  : {final_ckpt}\n")
     if best_score >= 0:
         print(f"  Best model saved to   : {best_ckpt} (detection quality: {quality_percent(best_score)})\n")
+
+    # Final mirror so the best/last checkpoints land on Kaggle even when the run
+    # ended on a non-sync epoch or via early stopping (no-op unless on Kaggle).
+    maybe_sync_checkpoints(
+        len(train_losses),
+        cfg["training"]["checkpoint_dir"],
+        log_file=cfg["logging"].get("log_file"),
+        force=True,
+    )
 
 
 if __name__ == "__main__":
