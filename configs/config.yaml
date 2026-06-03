@@ -52,7 +52,7 @@ model:
   anchor_sizes: [16, 32, 64, 128, 256]  # smaller than COCO default for small aerial objects (one per FPN level)
 
 training:
-  epochs:          50
+  epochs:          30
   batch_size:        4        # batch 4 fits a 16 GB cloud GPU (Kaggle T4, ~14.5 GB usable) even on dense iSAID tiles; batch 8 OOMs in RPN box_iou. On a 4 GB local GPU use 2.
   accumulation_steps: 2       # batch 4 x 2 = effective batch 8 (unchanged) -> same LR schedule & quality
   learning_rate:     0.01     # scaled for effective batch 8; warmup+cosine schedule
