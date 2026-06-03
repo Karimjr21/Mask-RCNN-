@@ -171,6 +171,22 @@ def load_training_state(path, device):
         return torch.load(path, map_location=device, weights_only=True)
 
 
+def checkpoint_matches_model(model, ckpt_state) -> bool:
+    """True iff a saved model state_dict has the same keys and shapes as ``model``.
+
+    Changing the architecture (e.g. arch v1 -> v2) or the anchor count changes the
+    parameter keys and/or shapes, so an old checkpoint cannot be loaded into the
+    new model. We check first and, on a mismatch, skip the resume and train fresh —
+    rather than letting ``load_state_dict`` abort the run with a wall of
+    missing/unexpected-key errors (the usual symptom of a v1 last.pth meeting a v2
+    config).
+    """
+    msd = model.state_dict()
+    if set(msd.keys()) != set(ckpt_state.keys()):
+        return False
+    return all(msd[k].shape == ckpt_state[k].shape for k in msd)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Training — one epoch
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -825,18 +841,26 @@ def main():
     start_epoch = 1
     if os.path.isfile(last_ckpt):
         state = load_training_state(last_ckpt, device)
-        model.load_state_dict(state["model"])
-        optimizer.load_state_dict(state["optimizer"])
-        scheduler.load_state_dict(state["scheduler"])
-        train_losses = state["train_losses"]
-        val_losses   = state["val_losses"]
-        val_scores   = state["val_scores"]
-        accuracies   = state["accuracies"]
-        best_score   = state["best_score"]
-        epochs_without_improvement = state["epochs_without_improvement"]
-        start_epoch  = state["epoch"] + 1
-        print(f"  Resuming from {last_ckpt}: continuing at epoch {start_epoch} "
-              f"(best detection quality so far: {quality_percent(best_score)})")
+        if not checkpoint_matches_model(model, state["model"]):
+            # Most common cause: a v1 last.pth left over while the config now builds
+            # a v2 model (different heads/FPN-norm/anchor count). Don't crash —
+            # ignore the stale checkpoint and train fresh from epoch 1.
+            print(f"  ⚠  {last_ckpt} does not match the current model architecture "
+                  f"(arch/anchors changed). Ignoring it and training FRESH from "
+                  f"epoch 1. Delete this file to silence the warning.")
+        else:
+            model.load_state_dict(state["model"])
+            optimizer.load_state_dict(state["optimizer"])
+            scheduler.load_state_dict(state["scheduler"])
+            train_losses = state["train_losses"]
+            val_losses   = state["val_losses"]
+            val_scores   = state["val_scores"]
+            accuracies   = state["accuracies"]
+            best_score   = state["best_score"]
+            epochs_without_improvement = state["epochs_without_improvement"]
+            start_epoch  = state["epoch"] + 1
+            print(f"  Resuming from {last_ckpt}: continuing at epoch {start_epoch} "
+                  f"(best detection quality so far: {quality_percent(best_score)})")
 
     if start_epoch == 1:
         init_csv(log_path)

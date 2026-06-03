@@ -94,16 +94,24 @@ def evaluate(
 
 
 if __name__ == "__main__":
-    import sys
+    import argparse
 
-    with open("configs/config.yaml", encoding="utf-8") as f:
+    parser = argparse.ArgumentParser(
+        description="Evaluate a Mask R-CNN checkpoint on the full validation set."
+    )
+    parser.add_argument("checkpoint", nargs="?",
+                        default="outputs/checkpoints/model_best.pth")
+    parser.add_argument("--config", default="configs/config.yaml",
+                        help="Config to build the model from. The model architecture "
+                             "(arch, anchors) MUST match the checkpoint — e.g. use a "
+                             "v1 config to evaluate the v1 baseline checkpoint.")
+    args = parser.parse_args()
+
+    with open(args.config, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
     device = select_device()
-    checkpoint = (
-        sys.argv[1] if len(sys.argv) > 1
-        else "outputs/checkpoints/model_best.pth"
-    )
+    checkpoint = args.checkpoint
 
     # Always evaluate on the FULL validation set here, regardless of the
     # training-time `val_fraction` subsample (which exists only to keep
@@ -122,7 +130,17 @@ if __name__ == "__main__":
         min_size=int(mc.get("min_size", 800)),
         max_size=int(mc.get("max_size", 1333)),
     )
-    model.load_state_dict(load_state_dict(checkpoint, device))
+    try:
+        model.load_state_dict(load_state_dict(checkpoint, device))
+    except RuntimeError as exc:
+        raise SystemExit(
+            f"\nCould not load '{checkpoint}' into the model built from "
+            f"'{args.config}' (arch={mc.get('arch', 'v1')}).\n"
+            f"The checkpoint's architecture must match the config. A v1 checkpoint "
+            f"(e.g. your 60% baseline) needs a v1 config: copy config.yaml, set "
+            f"model.arch: v1 and model.anchor_aspect_ratios: null, then pass it with "
+            f"--config.\n\nOriginal error:\n{exc}"
+        )
     model.to(device)
 
     evaluate(
