@@ -16,10 +16,8 @@ Env vars:
     KAGGLE_CKPT_INTERVAL  push every N epochs (default "2")
 """
 import os
-import sys
 import json
 import shutil
-import subprocess
 
 
 def _interval():
@@ -62,10 +60,16 @@ def maybe_sync_checkpoints(epoch, checkpoint_dir, log_file=None, force=False):
     with open(os.path.join(stage, "dataset-metadata.json"), "w") as f:
         json.dump({"id": dataset, "title": dataset.split("/")[-1]}, f)
 
-    cmd = [sys.executable, "-m", "kaggle", "datasets", "version",
-           "-p", stage, "-m", f"epoch {epoch}", "--quiet"]
     try:
-        subprocess.run(cmd, check=True)
+        # Call the Kaggle Python API directly. The CLI's `python -m kaggle`
+        # entrypoint doesn't exist in the kaggle build on Kaggle kernels, so
+        # shelling out to it fails there.
+        from kaggle.api.kaggle_api_extended import KaggleApi
+        api = KaggleApi()
+        api.authenticate()                           # reads KAGGLE_USERNAME / KAGGLE_KEY
+        api.dataset_create_version(
+            stage, f"epoch {epoch}", quiet=True, dir_mode="skip",
+        )
         print(f"  ⤴ Mirrored checkpoints to Kaggle dataset "
               f"{dataset} (epoch {epoch})")
     except Exception as exc:                         # never break training
