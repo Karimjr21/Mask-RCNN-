@@ -4,7 +4,7 @@ This is a **no-op unless** the environment variable ``KAGGLE_CKPT_DATASET`` is
 set, so local training is completely unaffected. On Kaggle, set it to e.g.
 ``karimahmed21/isaid-checkpoints`` and the trainer pushes ``last.pth`` and
 ``model_best.pth`` as a new dataset version every ``KAGGLE_CKPT_INTERVAL``
-epochs (default 2).
+epochs (default 1).
 
 Why: a Kaggle GPU session can disconnect or hit the 12-hour limit mid-run, and
 ``/kaggle/working`` is wiped when it ends. Mirroring the checkpoints to a
@@ -13,7 +13,7 @@ next session, restore ``last.pth``, and ``train.py`` resumes automatically.
 
 Env vars:
     KAGGLE_CKPT_DATASET   "owner/slug" of the checkpoints dataset (enables sync)
-    KAGGLE_CKPT_INTERVAL  push every N epochs (default "2")
+    KAGGLE_CKPT_INTERVAL  push every N epochs (default "1")
 """
 import os
 import json
@@ -22,9 +22,9 @@ import shutil
 
 def _interval():
     try:
-        return max(1, int(os.environ.get("KAGGLE_CKPT_INTERVAL", "2")))
+        return max(1, int(os.environ.get("KAGGLE_CKPT_INTERVAL", "1")))
     except ValueError:
-        return 2
+        return 1
 
 
 def maybe_sync_checkpoints(epoch, checkpoint_dir, log_file=None, force=False):
