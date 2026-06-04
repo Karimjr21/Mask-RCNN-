@@ -56,7 +56,7 @@ model:
   max_size: 1333             # network input long side cap
 
 training:
-  epochs:          35         # v2 + deeper fine-tune + new RPN head need a bit longer to converge than the v1 run (which plateaued ~epoch 12); early stopping trims it if it plateaus sooner.
+  epochs:          20         # v1 plateaued ~epoch 12; 20 gives v2 room to converge while keeping the run tractable across Kaggle sessions (cosine anneals LR to ~0 by epoch 20). Best checkpoint is kept regardless.
   batch_size:        2        # v2 + 4 trainable layers + 5 anchor ratios OOMs at batch 4 on a 16 GB T4 (the RPN box_iou on dense tiles needs ~0.5 GB transient that doesn't fit beside batch-4 activations). batch 2 leaves comfortable headroom. If you have a >=24 GB GPU you can raise this and drop accumulation_steps to keep effective batch 8.
   accumulation_steps: 4       # batch 2 x 4 = effective batch 8 (unchanged) -> same LR schedule & quality
   learning_rate:     0.01     # scaled for effective batch 8; warmup+cosine schedule
