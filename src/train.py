@@ -1,4 +1,10 @@
 import os
+# Reduce CUDA memory fragmentation before torch initialises CUDA. On dense iSAID
+# tiles the RPN's box_iou allocates large transient [n_gt, n_anchors] matrices
+# (bigger now with 5 aspect ratios); expandable segments lets the allocator reuse
+# the "reserved but unallocated" pool instead of OOMing next to it. setdefault so
+# an explicit environment override still wins.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import csv
 import sys
 import math

@@ -57,8 +57,8 @@ model:
 
 training:
   epochs:          35         # v2 + deeper fine-tune + new RPN head need a bit longer to converge than the v1 run (which plateaued ~epoch 12); early stopping trims it if it plateaus sooner.
-  batch_size:        4        # batch 4 fit the 16 GB T4 with v1 + 3 trainable layers. v2 + 4 trainable layers uses more memory: if epoch 1 OOMs, set batch_size 2 + accumulation_steps 4 (same effective batch 8). On a 4 GB local GPU use 2.
-  accumulation_steps: 2       # batch 4 x 2 = effective batch 8 (unchanged) -> same LR schedule & quality
+  batch_size:        2        # v2 + 4 trainable layers + 5 anchor ratios OOMs at batch 4 on a 16 GB T4 (the RPN box_iou on dense tiles needs ~0.5 GB transient that doesn't fit beside batch-4 activations). batch 2 leaves comfortable headroom. If you have a >=24 GB GPU you can raise this and drop accumulation_steps to keep effective batch 8.
+  accumulation_steps: 4       # batch 2 x 4 = effective batch 8 (unchanged) -> same LR schedule & quality
   learning_rate:     0.01     # scaled for effective batch 8; warmup+cosine schedule
   warmup_iters:      1500     # linear LR warmup (in optimizer steps) before cosine decay; longer warmup steadies the freshly-initialised heads (box, mask, and the rebuilt RPN head) + the newly-unfrozen backbone layer
   momentum:          0.9
